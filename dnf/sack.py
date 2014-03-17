@@ -68,11 +68,11 @@ class Sack(hawkey.Sack):
         """Factory function returning a DNF Query. :api"""
         return dnf.query.Query(self)
 
-    def rpmdb_version(self, yumdb):
+    def rpmdb_version(self, history):
         pkgs = self.query().installed().run()
         main = SackVersion()
         for pkg in pkgs:
-            ydbi = yumdb.get_package(pkg)
+            ydbi = history.swdb_pkg(pkg)
             csum = None
             if 'checksum_type' in ydbi and 'checksum_data' in ydbi:
                 csum = (ydbi.checksum_type, ydbi.checksum_data)

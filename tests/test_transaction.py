@@ -75,7 +75,7 @@ class TransactionItemTest(tests.support.TestCase):
     def test_propagated_reason(self):
         TI = dnf.transaction.TransactionItem
         yumdb = mock.Mock()
-        yumdb.get_package().get = lambda s: 'dep'
+        history.swdb_pkg().get = lambda s: 'dep'
 
         tsi = TI(dnf.transaction.INSTALL, installed='i1', reason='user')
         self.assertEqual(tsi.propagated_reason(yumdb), 'user')
@@ -86,7 +86,7 @@ class TransactionItemTest(tests.support.TestCase):
 
         # test the call can survive if no reason is known:
         yumdb = mock.Mock()
-        yumdb.get_package().get = lambda s: None
+        history.swdb_pkg().get = lambda s: None
         self.assertEqual(tsi.propagated_reason(yumdb), 'unknown')
 
     def test_removes(self):

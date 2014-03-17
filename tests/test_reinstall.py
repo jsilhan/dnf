@@ -110,8 +110,8 @@ class Reinstall(support.ResultTestCase):
     def test_reinstall_old_reponame_installed(self):
         """Test whether it reinstalls packages only from the repository."""
         for pkg in self.sack.query().installed().filter(name='librita'):
-            self.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self.base.yumdb.get_package(pkg).from_repo = 'main'
+            self.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self.base.history.swdb_pkg(pkg).from_repo = 'main'
 
         reinstalled_count = self.base.reinstall('librita', old_reponame='main')
 

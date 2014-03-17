@@ -42,11 +42,11 @@ class BaseTest(support.TestCase):
         base.conf.clean_requirements_on_remove = True
         goal = mock.Mock(spec=["userinstalled"])
         for pkg in base.sack.query().installed():
-            base.yumdb.get_package(pkg).reason = 'dep'
+            base.history.swdb_pkg(pkg).reason = 'dep'
         pkg1 = base.sack.query().installed().filter(name="pepper")[0]
-        base.yumdb.get_package(pkg1).reason = "user"
+        base.history.swdb_pkg(pkg1).reason = "user"
         pkg2 = base.sack.query().installed().filter(name="hole")[0]
-        base.yumdb.get_package(pkg2).reason = "unknown"
+        base.history.swdb_pkg(pkg2).reason = "unknown"
 
         # test:
         base._push_userinstalled(goal)
@@ -82,7 +82,7 @@ class BaseTest(support.TestCase):
         base._sack = support.mock_sack('main')
         base._yumdb = support.MockYumDB()
         pkg, = base.sack.query().installed().filter(name='pepper')
-        base.yumdb.get_package(pkg).get = {'reason': 'user', 'from_repo': 'main'}.get
+        base.history.swdb_pkg(pkg).get = {'reason': 'user', 'from_repo': 'main'}.get
 
         iterator = base.iter_userinstalled()
 
@@ -96,7 +96,7 @@ class BaseTest(support.TestCase):
         base._yumdb = support.MockYumDB()
 
         pkg, = base.sack.query().installed().filter(name='pepper')
-        base.yumdb.get_package(pkg).get = {'reason': 'user', 'from_repo': 'anakonda'}.get
+        base.history.swdb_pkg(pkg).get = {'reason': 'user', 'from_repo': 'anakonda'}.get
 
         iterator = base.iter_userinstalled()
 
@@ -109,7 +109,7 @@ class BaseTest(support.TestCase):
         base._yumdb = support.MockYumDB()
 
         pkg, = base.sack.query().installed().filter(name='pepper')
-        base.yumdb.get_package(pkg).get = {'reason': 'dep', 'from_repo': 'main'}.get
+        base.history.swdb_pkg(pkg).get = {'reason': 'dep', 'from_repo': 'main'}.get
 
         iterator = base.iter_userinstalled()
 
@@ -175,13 +175,13 @@ class VerifyTransactionTest(PycompTestCase):
         self.yumbase.verify_transaction(0)
         # mock is designed so this returns the exact same mock object it did
         # during the method call:
-        yumdb_info = self.yumbase.yumdb.get_package(new_pkg)
+        yumdb_info = self.yumbase.history.swdb_pkg(new_pkg)
         self.assertEqual(yumdb_info.from_repo, 'main')
         self.assertEqual(yumdb_info.reason, 'unknown')
         self.assertEqual(yumdb_info.releasever, 'Fedora69')
         self.assertEqual(yumdb_info.checksum_type, 'md5')
         self.assertEqual(yumdb_info.checksum_data, HASH)
-        self.yumbase.yumdb.assertLength(2)
+        self.yumbase.history.assertLength(2)
 
 class InstallReasonTest(support.ResultTestCase):
     def setUp(self):

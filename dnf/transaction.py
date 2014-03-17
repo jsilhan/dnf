@@ -94,11 +94,11 @@ class TransactionItem(object):
     def obsoleting_history_state(self):
         return 'Obsoleting'
 
-    def propagated_reason(self, yumdb):
+    def propagated_reason(self, history):
         if self.reason == 'user':
             return self.reason
         if self.op_type in [DOWNGRADE, REINSTALL, UPGRADE]:
-            previously = yumdb.get_package(self.erased).get('reason')
+            previously = history.swdb_pkg(self.erased)["reason"]
             if previously:
                 return previously
         return self.reason

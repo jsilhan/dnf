@@ -119,16 +119,16 @@ class HistoryWrapperTest(support.TestCase):
                 history=yum_history),)
 
         with self._create_wrapper(yum_history) as history:
-            id_ = history.last_transaction_id()
+            id_ = history.trans.with_uncompleted()[-1]
 
-        self.assertEqual(id_, 2)
+        self.assertEqual(id_[-1], 2)
 
     def test_last_transaction_id_notransaction(self):
         """Test last_transaction_id without any transaction."""
         with self._create_wrapper(support.HistoryStub()) as history:
-            id_ = history.last_transaction_id()
+            id_ = history.trans.with_uncompleted()[-1]
 
-        self.assertIsNone(id_)
+        self.assertLength(id_, 0)
 
     def test_transaction_nevra_ops_notransaction(self):
         """Test transaction_nevra_ops without any transaction."""

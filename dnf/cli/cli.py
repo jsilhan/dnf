@@ -947,16 +947,15 @@ class BaseCli(dnf.Base):
 
             if id_or_offset < 0:
                 if last is None:
-                    cto = False
-                    last = self.history.last(complete_transactions_only=cto)
+                    last = self.history.transactions.with_uncompleted()[-1]
                     if last is None:
                         self.logger.critical(_('Bad transaction ID given'))
                         return None
-                tids.append(str(last.tid + id_or_offset + 1))
+                tids.append(last.tid + id_or_offset + 1)
             else:
-                tids.append(str(id_or_offset))
+                tids.append(id_or_offset)
 
-        old = self.history.old(tids)
+        old = self.history.transactions.filter(tid__in=tids)
         if not old:
             self.logger.critical(_('Not found given transaction ID'))
             return None
@@ -975,34 +974,25 @@ class BaseCli(dnf.Base):
         old = self.history_get_transaction((extcmd,))
         if old is None:
             return 1, ['Failed history rollback, no transaction']
-        last = self.history.last()
+        last = self.history.transactions.last()
         if last is None:
             return 1, ['Failed history rollback, no last?']
         if old.tid == last.tid:
             return 0, ['Rollback to current, nothing to do']
 
-        mobj = None
-        for tid in self.history.old(list(range(old.tid + 1, last.tid + 1))):
-            if tid.altered_lt_rpmdb:
-                self.logger.warning(_('Transaction history is incomplete, before %u.'), tid.tid)
-            elif tid.altered_gt_rpmdb:
-                self.logger.warning(_('Transaction history is incomplete, after %u.'), tid.tid)
-
-            if mobj is None:
-                mobj = dnf.yum.history.YumMergedHistoryTransaction(tid)
-            else:
-                mobj.merge(tid)
+        interval = range(old.tid + 1, last + 1)
+        mobj = self.history.transactions.filter(tid__in=interval)
+        mobj.merge(show_warnings=True)
 
         tm = time.ctime(old.beg_timestamp)
         print("Rollback to transaction %u, from %s" % (old.tid, tm))
         print(self.output.fmtKeyValFill("  Undoing the following transactions: ",
-                                      ", ".join((str(x) for x in mobj.tid))))
+                                      ", ".join((str(x.tid) for x in mobj))))
         self.output.historyInfoCmdPkgsAltered(mobj)  # :todo
 
-        history = dnf.history.open_history(self.history)  # :todo
         operations = dnf.history.NEVRAOperations()
         for id_ in range(old.tid + 1, last.tid + 1):
-            operations += history.transaction_nevra_ops(id_)
+            operations += self.history.transaction_nevra_ops(id_)
 
         hibeg = self.output.term.MODE['bold']
         hiend = self.output.term.MODE['normal']
@@ -1031,12 +1021,11 @@ class BaseCli(dnf.Base):
         print("Undoing transaction %u, from %s" % (old.tid, tm))
         self.output.historyInfoCmdPkgsAltered(old)  # :todo
 
-        history = dnf.history.open_history(self.history)  # :todo
-
         hibeg = self.output.term.MODE['bold']
         hiend = self.output.term.MODE['normal']
         try:
-            self.history_undo_operations(history.transaction_nevra_ops(old.tid))
+            self.history_undo_operations(
+                self.history.transaction_nevra_ops(old.tid))
         except dnf.exceptions.PackagesNotInstalledError as err:
             self.logger.info(_('No package %s%s%s installed.'),
                              hibeg, unicode(err.pkg_spec), hiend)

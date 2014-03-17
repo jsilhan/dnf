@@ -282,8 +282,8 @@ class ReInstallCommandTest(support.ResultTestCase):
         base = self._cmd.cli.base
         holes_query = dnf.subject.Subject('hole').get_best_query(base.sack)
         for pkg in holes_query.installed():
-            self._cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self._cmd.base.yumdb.get_package(pkg).from_repo = 'unknown'
+            self._cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self._cmd.base.history.swdb_pkg(pkg).from_repo = 'unknown'
         stdout = dnf.pycomp.StringIO()
 
         with support.wiretap_logs('dnf', logging.INFO, stdout):
@@ -402,8 +402,8 @@ class RepoPkgsInfoSubCommandTest(unittest.TestCase):
     def test_info_all(self):
         """Test whether only packages related to the repository are listed."""
         for pkg in self._cmd.base.sack.query().installed().filter(name='pepper'):
-            self._cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self._cmd.base.yumdb.get_package(pkg).from_repo = 'main'
+            self._cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self._cmd.base.history.swdb_pkg(pkg).from_repo = 'main'
 
         with support.patch_std_streams() as (stdout, _):
             self._cmd.run('main', ['all', '*p*'])
@@ -457,8 +457,8 @@ class RepoPkgsInfoSubCommandTest(unittest.TestCase):
     def test_info_extras(self):
         """Test whether only extras installed from the repository are listed."""
         for pkg in self._cmd.base.sack.query().installed().filter(name='tour'):
-            self._cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self._cmd.base.yumdb.get_package(pkg).from_repo = 'unknown'
+            self._cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self._cmd.base.history.swdb_pkg(pkg).from_repo = 'unknown'
 
         with support.patch_std_streams() as (stdout, _):
             self._cmd.run('unknown', ['extras'])
@@ -483,8 +483,8 @@ class RepoPkgsInfoSubCommandTest(unittest.TestCase):
     def test_info_installed(self):
         """Test whether only packages installed from the repository are listed."""
         for pkg in self._cmd.base.sack.query().installed().filter(name='pepper'):
-            self._cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self._cmd.base.yumdb.get_package(pkg).from_repo = 'main'
+            self._cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self._cmd.base.history.swdb_pkg(pkg).from_repo = 'main'
 
         with support.patch_std_streams() as (stdout, _):
             self._cmd.run('main', ['installed'])
@@ -608,8 +608,8 @@ class RepoPkgsReinstallOldSubCommandTest(support.ResultTestCase):
         """Test whether all packages from the repository are reinstalled."""
         for pkg in self.cmd.base.sack.query().installed():
             reponame = 'main' if pkg.name != 'pepper' else 'non-main'
-            self.cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self.cmd.base.yumdb.get_package(pkg).from_repo = reponame
+            self.cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self.cmd.base.history.swdb_pkg(pkg).from_repo = reponame
 
         self.cmd.run('main', [])
 
@@ -694,8 +694,8 @@ class RepoPkgsRemoveOrReinstallSubCommandTest(support.ResultTestCase):
         """Test whether all packages from the repository are reinstalled."""
         for pkg in self.cmd.base.sack.query().installed():
             reponame = 'distro' if pkg.name != 'tour' else 'non-distro'
-            self.cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self.cmd.base.yumdb.get_package(pkg).from_repo = reponame
+            self.cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self.cmd.base.history.swdb_pkg(pkg).from_repo = reponame
 
         self.cmd.run('non-distro', [])
 
@@ -708,8 +708,8 @@ class RepoPkgsRemoveOrReinstallSubCommandTest(support.ResultTestCase):
         """Test whether all packages from the repository are removed."""
         for pkg in self.cmd.base.sack.query().installed():
             reponame = 'distro' if pkg.name != 'hole' else 'non-distro'
-            self.cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self.cmd.base.yumdb.get_package(pkg).from_repo = reponame
+            self.cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self.cmd.base.history.swdb_pkg(pkg).from_repo = reponame
 
         self.cmd.run('non-distro', [])
 
@@ -733,8 +733,8 @@ class RepoPkgsRemoveSubCommandTest(support.ResultTestCase):
         """Test whether only packages from the repository are removed."""
         for pkg in self.cmd.base.sack.query().installed():
             reponame = 'main' if pkg.name == 'pepper' else 'non-main'
-            self.cmd.base.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self.cmd.base.yumdb.get_package(pkg).from_repo = reponame
+            self.cmd.base.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self.cmd.base.history.swdb_pkg(pkg).from_repo = reponame
 
         self.cmd.run('main', [])
 

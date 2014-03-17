@@ -24,7 +24,7 @@ from __future__ import print_function
 from dnf import const, query, sack
 from dnf.pycomp import unicode, basestring
 from dnf.yum import config
-from dnf.yum import history
+import swdb
 from dnf.yum import i18n
 from dnf.yum import misc
 from dnf.yum import rpmsack
@@ -220,12 +220,6 @@ class Base(object):
         self._setup_excludes()
         self._goal = hawkey.Goal(self._sack)
         return self._sack
-
-    @property
-    @dnf.util.lazyattr("_yumdb")
-    def yumdb(self):
-        db_path = os.path.normpath(self.conf.persistdir + '/yumdb')
-        return rpmsack.AdditionalPkgDB(db_path)
 
     def close(self):
         """Close the history and repo objects."""
@@ -428,11 +422,10 @@ class Base(object):
         """auto create the history object that to access/append the transaction
            history information. """
         if self._history is None:
-            db_path = self.conf.persistdir + "/history"
-            releasever = self.conf.yumvar['releasever']
-            self._history = history.YumHistory(db_path, self.yumdb,
-                                               root=self.conf.installroot,
-                                               releasever=releasever)
+            using_pkgs_pats = list(self.conf.history_record_packages)
+            installed_query = self.sack.query().installed()
+            using_pkgs = installed_query.filter(name=using_pkgs_pats).run()
+            self._history = History(using_pkgs)
         return self._history
 
     history = property(fget=lambda self: self._getHistory(),
@@ -510,15 +503,18 @@ class Base(object):
 
     def iter_userinstalled(self):
         """Get iterator over the packages installed by the user."""
-        return (pkg for pkg in self.sack.query().installed()
-                if self.yumdb.get_package(pkg).get('reason') == 'user' and
-                   self.yumdb.get_package(pkg).get('from_repo') != 'anakonda')
+        def by_user(pkg):
+            swdb_pkg = self.history.swdb_pkg(pkg)
+            q = self.history.swdb_pkg(package=swdb_pkg, reason="user")
+            return len(q.exclude(from_repo="anaconda")) > 0
+
+        return (pkg for pkg in self.sack.query().installed() if by_user(pkg))
 
     def _push_userinstalled(self, goal):
         msg =  _('--> Finding unneeded leftover dependencies')
         self.logger.info(msg)
         for pkg in self.sack.query().installed().run():
-            yumdb_info = self.yumdb.get_package(pkg)
+            yumdb_info = self.history.swdb_pkg(pkg)
             reason = 'user'
             try:
                 reason = yumdb_info.reason
@@ -659,13 +655,10 @@ class Base(object):
            transaction cannot be completed
         """
         if self._record_history():
-            using_pkgs_pats = list(self.conf.history_record_packages)
-            installed_query = self.sack.query().installed()
-            using_pkgs = installed_query.filter(name=using_pkgs_pats).run()
-            rpmdbv  = self.sack.rpmdb_version(self.yumdb)
-            lastdbv = self.history.last()
+            rpmdbv = self.sack.rpmdb_version(self.history)
+            lastdbv = self.history.transactions.last()
             if lastdbv is not None:
-                lastdbv = lastdbv.end_rpmdbversion
+                lastdbv = lastdbv["rpmdbversion"]
 
             if lastdbv is None or rpmdbv != lastdbv:
                 self.logger.debug("RPMDB altered outside of DNF.")
@@ -676,10 +669,13 @@ class Base(object):
             elif hasattr(self, 'cmds') and self.cmds:
                 cmdline = ' '.join(self.cmds)
 
-            self.history.beg(rpmdbv, using_pkgs, list(self.transaction),
-                             [], [], cmdline)
+            hist_trans = self.history.begin_transaction(
+                self.transaction,
+                rpmdb_version=rpmdbv,
+                cmdline=cmdline)
             # write out our config and repo data to additional history info
-            self._store_config_in_history()
+            self._store_config_in_history(hist_trans)
+            hist_trans.save()
 
         # transaction has started - all bets are off on our saved ts file
         if self._ts_save_file is not None:
@@ -732,9 +728,7 @@ class Base(object):
                                               errors=[])
         else:
             if self._record_history():
-                herrors = [to_unicode(to_str(x)) for x in errors]
-                self.history.end(rpmdbv, 2, errors=herrors)
-
+                hist_trans.append_errors(errors).end(2)
 
             self.logger.critical(_("Transaction couldn't start:"))
             for e in errors:
@@ -753,7 +747,7 @@ class Base(object):
 
         # sync up what just happened versus what is in the rpmdb
         if not self.ts.isTsFlagSet(rpm.RPMTRANS_FLAG_TEST):
-            self.verify_transaction(return_code, cb.verify_tsi_package)
+            self.verify_transaction(return_code, cb.verify_tsi_package, hist_trans)
 
         if (not self.conf.keepcache and
             not self.ts.isTsFlagSet(rpm.RPMTRANS_FLAG_TEST)):
@@ -761,7 +755,7 @@ class Base(object):
 
         return return_code
 
-    def verify_transaction(self, return_code, verify_pkg_cb=None):
+    def verify_transaction(self, return_code, verify_pkg_cb=None, hist_trans=None):
         """Check that the transaction did what was expected, and
         propagate external yumdb information.  Output error messages
         if the transaction did not do what was expected.
@@ -813,51 +807,46 @@ class Base(object):
                 continue
             po = installed[0]
             count = display_banner(rpo, count)
-            yumdb_info = self.yumdb.get_package(po)
-            yumdb_info.from_repo = rpo.repoid
+            hist_pkg = self.history.swdb_pkg(po)
+            hist_pkg["from_repo"] = rpo.repoid
 
-            yumdb_info.reason = tsi.propagated_reason(self.yumdb)
-            yumdb_info.releasever = self.conf.yumvar['releasever']
-            if hasattr(self, 'args') and self.args:
-                yumdb_info.command_line = ' '.join(self.args)
-            elif hasattr(self, 'cmds') and self.cmds:
-                yumdb_info.command_line = ' '.join(self.cmds)
+            hist_pkg.reason = tsi.propagated_reason(self.history)
+            hist_pkg["releasever"] = self.conf.yumvar['releasever']
             csum = rpo.returnIdSum()
             if csum is not None:
-                yumdb_info.checksum_type = str(csum[0])
-                yumdb_info.checksum_data = csum[1]
+                hist_pkg["checksum_type"] = str(csum[0])
+                hist_pkg["checksum_data"] = csum[1]
 
             if rpo.from_cmdline:
                 try:
                     st = os.stat(rpo.localPkg())
-                    lp_ctime = str(int(st.st_ctime))
-                    lp_mtime = str(int(st.st_mtime))
-                    yumdb_info.from_repo_revision  = lp_ctime
-                    yumdb_info.from_repo_timestamp = lp_mtime
+                    hist_pkg["from_repo_revision"] = int(st.st_ctime)
+                    hist_pkg["from_repo_timestamp"] = int(st.st_mtime)
                 except Exception:
                     pass
             elif hasattr(rpo.repo, 'repoXML'):
                 md = rpo.repo.repoXML
                 if md and md.revision is not None:
-                    yumdb_info.from_repo_revision  = str(md.revision)
+                    hist_pkg["from_repo_revision"] = md.revision
                 if md:
-                    yumdb_info.from_repo_timestamp = str(md.timestamp)
+                    hist_pkg["from_repo_timestamp"] = md.timestamp
 
             loginuid = misc.getloginuid()
             if tsi.op_type in (dnf.transaction.DOWNGRADE,
                                dnf.transaction.REINSTALL,
                                dnf.transaction.UPGRADE):
                 opo = tsi.erased
-                opo_yumdb_info = self.yumdb.get_package(opo)
-                if 'installed_by' in opo_yumdb_info:
-                    yumdb_info.installed_by = opo_yumdb_info.installed_by
+                opo_hist_pkg = self.history.swdb_pkg(opo)
+                if 'installed_by' in opo_hist_pkg:
+                    hist_pkg["installed_by"] = opo_hist_pkg.installed_by
                 if loginuid is not None:
-                    yumdb_info.changed_by = str(loginuid)
+                    hist_pkg["changed_by"] = loginuid
             elif loginuid is not None:
-                yumdb_info.installed_by = str(loginuid)
+                hist_pkg["installed_by"] = loginuid
+                hist_pkg.save()
 
             if self.conf.history_record:
-                self.history.sync_alldb(po)
+                self.history.save_rpmdb_data(po)
 
         just_installed = self.sack.query().\
             filter(pkg=self.transaction.install_set)
@@ -872,12 +861,9 @@ class Base(object):
                     count = display_banner(rpo, count)
                     continue
             count = display_banner(rpo, count)
-            yumdb_item = self.yumdb.get_package(po=rpo)
-            yumdb_item.clean()
 
         if self._record_history():
-            rpmdbv = rpmdb_sack.rpmdb_version(self.yumdb)
-            self.history.end(rpmdbv, return_code)
+            hist_trans.end(return_code)
         self.logger.debug('VerifyTransaction time: %0.3f' % (time.time() - vt_st))
 
     def download_packages(self, pkglist, progress=None, callback_total=None):
@@ -1137,7 +1123,7 @@ class Base(object):
             """Test whether given package originates from the repository."""
             if reponame is None:
                 return True
-            return self.yumdb.get_package(package).get('from_repo') == reponame
+            return self.history.swdb_pkg(package)['from_repo'] == reponame
 
         def pkgs_from_repo(packages):
             """Filter out the packages which do not originate from the repo."""
@@ -1598,7 +1584,7 @@ class Base(object):
         installed = [
             pkg for pkg in matches.installed()
             if reponame is None or
-               self.yumdb.get_package(pkg).get('from_repo') == reponame]
+               self.history.swdb_pkg(pkg).get('from_repo') == reponame]
         if not installed:
             raise dnf.exceptions.PackagesNotInstalledError('no package matched', pkg_spec)
 
@@ -1691,7 +1677,7 @@ class Base(object):
         installed_pkgs = [
             pkg for pkg in q.installed()
             if old_reponame is None or
-               self.yumdb.get_package(pkg).get('from_repo') == old_reponame]
+               self.history.swdb_pkg(pkg).get('from_repo') == old_reponame]
 
         available_q = q.available()
         if new_reponame is not None:

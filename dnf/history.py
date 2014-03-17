@@ -23,7 +23,9 @@
 from __future__ import absolute_import
 from collections import defaultdict, Container, Iterable, Sized
 from dnf.util import is_exhausted, split_by
-from dnf.yum.history import YumHistory
+from dnf.subject import Subject
+import swdb
+import glob
 
 INSTALLING_STATES = {'Install', 'Reinstall', 'Update', 'Downgrade'}
 
@@ -44,20 +46,19 @@ STATE2COMPLEMENT = {'Reinstall': 'Reinstalled',
                     'Downgrade': 'Downgraded',
                     'Downgraded': 'Downgrade'}
 
-def open_history(database):
-    """Open a history of transactions."""
-    if isinstance(database, YumHistory):
-        return _HistoryWrapper(database)
-    else:
-        raise TypeError("unsupported database type: %s" % type(database))
+_valid_rpmdb_keys = set(["buildtime", "buildhost",
+                         "license", "packager",
+                         "size", "sourcerpm", "url", "vendor",
+                         "committer", "committime"])
 
-class _HistoryWrapper(object):
+class History(swdb.Swdb):
     """Transactions history interface on top of an YumHistory."""
 
-    def __init__(self, yum_history):
+    def __init__(self, using_pkgs):
         """Initialize a wrapper instance."""
         object.__init__(self)
-        self._history = yum_history
+        pkgs = map(self.swdb_pkg, using_pkgs)
+        super(swdb.Swdb, self).__init__(default_type=swdb.RPM_PKGS, app=pkgs)
 
     def __enter__(self):
         """Enter the runtime context."""
@@ -68,25 +69,121 @@ class _HistoryWrapper(object):
         self.close()
         return False
 
-    def close(self):
-        """Close the history."""
-        self._history.close()
+    def begin_transaction(self, transaction, cmdline, rpmdb_version):
+        self.transaction.new(
+            pkgs=self.trans2swdbpkg(transaction),
+            cmdline=cmdline,
+            rpmdb_version=rpmdb_version)
 
-    def has_transaction(self, id_):
-        """Test whether a transaction with given ID is stored."""
-        return bool(self._history.old((str(id_),)))
+    def save_rpmdb_data(self, pkg):
+        """ Save all the data for rpmdb for this installed pkg, assumes
+            there is no data currently. """
+        attrs = {key: getattr(pkg, key, None) for key in _valid_rpmdb_keys}
+        not_empty_attrs = filter(lambda a: attrs[a], attrs)
+        dwdbpkg = self.swdb_pkg(pkg)
+        return dwdbpkg.set(**not_empty_attrs).save()
 
-    def last_transaction_id(self):
-        """Get ID of the last stored transaction."""
-        last_tx = self._history.last(complete_transactions_only=False)
-        return last_tx.tid if last_tx else None
+    def pkg_stats(self):
+        distinct_fields = (
+            ('na', ('name', 'arch')),
+            ('nevrac', ('name', 'arch')),
+            ('nevra', ('name', 'arch')),
+            ('nevr', ('name', 'arch')),
+            ('rpmdb', ('name', 'arch')),
+            ('yumdb', ('name', 'arch'))
+            # TODO assign right fields
+        )
+
+        def records_count(*fields):
+            return len(self.base.history.package.all().distinct(*fields))
+
+        return {key: records_count(fields) for key, fields in distinct_fields}
+
+    def search(self, patterns):
+        """ Search for history transactions which contain specified
+            packages al. la. "yum list". Returns transaction ids. """
+        tids = []
+        for nevra in Subject(patterns).nevra_possibilities():
+            attrs = ((a, val) for a, val in nevra.__dict__.iteritems() if a)
+            filters = {"pkgs__" + attr + "__icase": val for (attr, val) in attrs}
+            tids.append(lambda t: t.tid, map(self.swdb.pkgs.filter(**filters)))
+        return tids
+
+    def swdb_pkg(self, hypkg):
+        attrs = ("name", "epoch", "version", "release", "arch")
+        return self.package.new(**{a: getattr(hypkg, a) for a in attrs})
+
+    def trans2swdbpkg(self, transaction):
+        # TODO add packages as pairs
+        for tsi in transaction:
+            for (pkg, state) in tsi.history_iterator():
+                yield self.swdb_pkg(pkg).set({"state": state})
+
+    def return_addon_data(self, tid, item=None):
+        # temporary maintained
+        hist_and_tid = self.conf.addon_path + '/' + str(tid) + '/'
+        addon_info = glob.glob(hist_and_tid + '*')
+        addon_names = [i.replace(hist_and_tid, '') for i in addon_info]
+        if not item:
+            return addon_names
+
+        if item not in addon_names:
+            # XXX history needs SOME kind of exception, or warning, I think?
+            return None
+
+        fo = open(hist_and_tid + item, 'r')
+        data = fo.read()
+        fo.close()
+        return data
+
+    def write_addon_data(self, dataname, data):
+        # temporary maintained
+        """append data to an arbitrary-named file in the history
+           addon_path/transaction id location,
+           returns True if write succeeded, False if not"""
+
+        if not hasattr(self, '_tid'):
+            # maybe we should raise an exception or a warning here?
+            return False
+
+        if not dataname:
+            return False
+
+        if not data:
+            return False
+
+        # make sure the tid dir exists
+        tid_dir = self.conf.addon_path + '/' + str(self._tid)
+
+        if self.conf.writable and not os.path.exists(tid_dir):
+            try:
+                os.makedirs(tid_dir, mode=0o700)
+            except (IOError, OSError) as e:
+                # emit a warning/raise an exception?
+                return False
+
+        # cleanup dataname
+        safename = dataname.replace('/', '_')
+        data_fn = tid_dir + '/' + safename
+        try:
+            # open file in append
+            fo = open(data_fn, 'wb+')
+            # write data
+            fo.write(to_utf8(data))
+            # flush data
+            fo.flush()
+            fo.close()
+        except (IOError, OSError) as e:
+            return False
+        # return
+        return True
 
     def transaction_nevra_ops(self, id_):
         """Get operations on packages (by their NEVRAs) in the transaction."""
-        if not self.has_transaction(id_):
+        try:
+            hpkgs = self._swdb.history_transactions.filter(tid=id_)[0]
+        except IndexError:
             raise ValueError('no transaction with given ID: %d' % id_)
-
-        hpkgs = self._history._old_data_pkgs(str(id_), sort=False)
 
         # Split history to history packages representing transaction items.
         items_hpkgs = split_by(hpkgs, lambda hpkg: hpkg.state in PRIMARY_STATES)

@@ -1443,7 +1443,7 @@ class RepoPkgsCommand(Command):
                     except dnf.exceptions.PackagesNotAvailableError as err:
                         for pkg in err.packages:
                             xmsg = ''
-                            yumdb_info = self.base.yumdb.get_package(pkg)
+                            yumdb_info = self.base.history.swdb_pkg(pkg)
                             if 'from_repo' in yumdb_info:
                                 xmsg = _(' (from %s)') % yumdb_info.from_repo
                             msg = _('Installed package %s%s%s%s not available.')
@@ -1511,7 +1511,7 @@ class RepoPkgsCommand(Command):
                     except dnf.exceptions.PackagesNotAvailableError as err:
                         for pkg in err.packages:
                             xmsg = ''
-                            yumdb_info = self.base.yumdb.get_package(pkg)
+                            yumdb_info = self.base.history.swdb_pkg(pkg)
                             if 'from_repo' in yumdb_info:
                                 xmsg = _(' (from %s)') % yumdb_info.from_repo
                             msg = _('Installed package %s%s%s%s not available.')
@@ -2003,7 +2003,7 @@ class ReInstallCommand(Command):
             except dnf.exceptions.PackagesNotAvailableError as err:
                 for pkg in err.packages:
                     xmsg = ''
-                    yumdb_info = self.base.yumdb.get_package(pkg)
+                    yumdb_info = self.base.history.swdb_pkg(pkg)
                     if 'from_repo' in yumdb_info:
                         xmsg = _(' (from %s)') % yumdb_info.from_repo
                     msg = _('Installed package %s%s%s%s not available.')
@@ -2321,15 +2321,15 @@ class HistoryCommand(Command):
             return 1, [str(err)]
 
     def _hcmd_new(self, extcmds):
-        self.base.history._create_db_file()
+        self.base.history.backup()
 
     def _hcmd_stats(self, extcmds):
-        print("File        :", self.base.history._db_file)
-        num = os.stat(self.base.history._db_file).st_size
+        print("File        :", self.base.history.path)
+        num = os.stat(self.base.history.path).st_size
         print("Size        :", locale.format("%d", num, True))
-        counts = self.base.history._pkg_stats()
-        trans_1 = self.base.history.old("1")[0]
-        trans_N = self.base.history.last()
+        counts = self.base.history.pkg_stats()
+        trans_1 = self.base.history.transactions.first()
+        trans_N = self.base.history.transactions.last()
         print(_("Transactions:"), trans_N.tid)
         print(_("Begin time  :"), time.ctime(trans_1.beg_timestamp))
         print(_("End time    :"), time.ctime(trans_N.end_timestamp))
@@ -2346,11 +2346,8 @@ class HistoryCommand(Command):
         if not extcmds:
             extcmds = None
         for ipkg in sorted(self.base.rpmdb.returnPackages(patterns=extcmds)):
-            if self.base.history.pkg2pid(ipkg, create=False) is None:
-                continue
-
-            print("Syncing rpm/yum DB data for:", ipkg, "...", end='')
-            if self.base.history.sync_alldb(ipkg):
+            print("Syncing rpm DB data for:", ipkg, "...", end='')
+            if self.base.history.save_rpmdb_data(ipkg):
                 print("Done.")
             else:
                 print("FAILED.")
@@ -2380,7 +2377,7 @@ class HistoryCommand(Command):
             raise dnf.cli.CliError
         if extcmds and extcmds[0] in ('repeat', 'redo', 'undo', 'rollback', 'new'):
             checkGPGKey(self.base, self.cli)
-        elif not os.access(self.base.history._db_file, os.R_OK):
+        elif not os.access(self.base.history.path, os.R_OK):
             self.base.logger.critical(_("You don't have access to the history DB."))
             raise dnf.cli.CliError
 

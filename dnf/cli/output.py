@@ -506,8 +506,8 @@ class Output(object):
         return self.base.sack
 
     @property
-    def yumdb(self):
-        return self.base.yumdb
+    def history(self):
+        return self.base.history
 
     def calcColumns(self, data, columns=None, remainder_column=0,
                     total_width=None, indent=''):
@@ -796,7 +796,7 @@ class Output(object):
            package
         """
         (hibeg, hiend) = self._highlight(highlight)
-        yumdb_info = self.yumdb.get_package(pkg) if pkg.from_system else {}
+        yumdb_info = self.history.swdb_pkg(pkg) if pkg.from_system else {}
         print(_("Name        : %s%s%s") % (hibeg, to_unicode(pkg.name), hiend))
         print(_("Arch        : %s") % to_unicode(pkg.arch))
         if pkg.e != "0":
@@ -1648,7 +1648,7 @@ Transaction Summary
         if printall:
             limit = None
 
-        old_tids = self.history.old(tids, limit=limit)
+        old_tids = self.history.transactions.filter(tid__in=tids)[:limit]
         done = 0
         if self.conf.history_list_view == 'users':
             uids = [1,2]
@@ -1757,7 +1757,7 @@ Transaction Summary
             tids.update(self._historyRangeTIDs(mtids))
 
         if not tids and len(extcmds) < 2:
-            old = self.history.last(complete_transactions_only=False)
+            old = self.history.transactions.with_uncompleted().last()
             if old is not None:
                 tids.add(old.tid)
                 utids.add(old.tid)
@@ -1776,17 +1776,18 @@ Transaction Summary
         mobj = None
         if mtids:
             bmtid, emtid = mtids.pop(0)
-        for tid in self.history.old(tids):
+        for tid in self.history.filter(tid__in=tids):
             if lastdbv is not None and tid.tid == lasttid:
                 #  If this is the last transaction, is good and it doesn't
                 # match the current rpmdb ... then mark it as bad.
-                rpmdbv  = self.sack.rpmdb_version(self.yumdb)
+                rpmdbv  = self.sack.rpmdb_version(self.history)
                 if lastdbv != rpmdbv:
                     tid.altered_gt_rpmdb = True
             lastdbv = None
 
             if tid.tid >= bmtid and tid.tid <= emtid:
                 if mobj is None:
+                    # TODO we'd better refactor whole historyInfoCmd method
                     mobj = dnf.yum.history.YumMergedHistoryTransaction(tid)
                 else:
                     mobj.merge(tid)
@@ -2070,7 +2071,7 @@ Transaction Summary
         data = {'day' : {}, 'week' : {},
                 'fortnight' : {}, 'quarter' : {}, 'half' : {},
                 'year' : {}, 'all' : {}}
-        for old in self.history.old(tids):
+        for old in self.history.filter(tid__in=tids):
             name = self._pwd_ui_username(old.loginuid, 26)
             period = 'all'
             now = time.time()
@@ -2133,9 +2134,9 @@ Transaction Summary
                 return 1, ['Failed history addon-info']
 
         if tid is not None:
-            old = self.history.old(tids=[tid])
+            old = self.history.filter(tid=tid)
         else:
-            old = [self.history.last(complete_transactions_only=False)]
+            old = [self.history.with_uncompleted().last()]
             if old[0] is None:
                 self.logger.critical(_('No transaction ID, or package, given'))
                 return 1, ['Failed history addon-info']
@@ -2188,7 +2189,7 @@ Transaction Summary
         print("-" * 79)
         fmt = "%6u | %s | %-50s"
         num = 0
-        for old in self.history.old(tids, limit=limit):
+        for old in self.history.filter(tid__in=tids)[:limit]:
             if limit is not None and num and (num +len(old.trans_data)) > limit:
                 break
             last = None
@@ -2260,7 +2261,7 @@ Transaction Summary
         all_uistates = self._history_state2uistate
 
         num = 0
-        for old in self.history.old(tids, limit=limit):
+        for old in self.history.filter(tid__in=tids)[:limit]:
             if limit is not None and num and (num +len(old.trans_data)) > limit:
                 break
 

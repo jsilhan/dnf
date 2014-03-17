@@ -64,8 +64,8 @@ class Remove(support.ResultTestCase):
         """Test whether only packages from the repository are uninstalled."""
         pkg_subj = dnf.subject.Subject('librita.x86_64')
         for pkg in pkg_subj.get_best_query(self.yumbase.sack).installed():
-            self.yumbase.yumdb.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
-            self.yumbase.yumdb.get_package(pkg).from_repo = 'main'
+            self.yumbase.history.db[str(pkg)] = support.RPMDBAdditionalDataPackageStub()
+            self.yumbase.history.swdb_pkg(pkg).from_repo = 'main'
 
         self.yumbase.remove('librita', 'main')
         self.assertResult(self.yumbase, itertools.chain(
