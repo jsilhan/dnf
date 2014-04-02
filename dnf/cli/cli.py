@@ -1016,6 +1016,7 @@ class Cli(object):
         self.base = base
         self.cli_commands = {}
         self.nogpgcheck = False
+        self.refresh_metadata = False
 
         self.register_command(dnf.cli.commands.install.InstallCommand)
         self.register_command(dnf.cli.commands.upgrade.UpgradeCommand)
@@ -1310,6 +1311,8 @@ class Cli(object):
         for arg in self.base.args:
             self.cmdstring += '%s ' % arg
 
+        self.refresh_metadata = opts.refresh_metadata
+
         try:
             self._parse_commands() # before we return check over the base command
                                   # + args make sure they match/make sense
@@ -1382,6 +1385,8 @@ class Cli(object):
             self.base.fill_sack(load_system_repo='auto',
                                 load_available_repos=lar)
             self.base.plugins.run_sack()
+        if self.refresh_metadata:
+            self.base.cleanCli('metadata')
         return self.command.run(self.base.extcmds)
 
     def print_usage(self):
@@ -1668,3 +1673,4 @@ class OptionParser(argparse.ArgumentParser):
         self.add_argument("--setopt", dest="setopts", default=[],
                            action="append",
                            help=_("set arbitrary config and repo options"))
+        self.add_argument("--metadata-refresh", dest="refresh_metadata", action="store_true")
