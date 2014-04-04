@@ -22,7 +22,7 @@ from __future__ import unicode_literals
 import locale
 import os
 import sys
-from dnf.pycomp import PY3, is_py3bytes, unicode
+from dnf.pycomp import PY3, is_py3bytes, unicode, setlocale
 
 """
 Centralize i18n stuff here. Must be unittested.
@@ -65,14 +65,14 @@ def _guess_encoding():
 
 def setup_locale():
     try:
-        locale.setlocale(locale.LC_ALL, '')
+        setlocale(locale.LC_ALL, '')
         # set time to C so that we output sane things in the logs (#433091)
-        locale.setlocale(locale.LC_TIME, 'C')
+        setlocale(locale.LC_TIME, 'C')
     except locale.Error as e:
         # default to C locale if we get a failure.
         print('Failed to set locale, defaulting to C', file=sys.stderr)
         os.environ['LC_ALL'] = 'C'
-        locale.setlocale(locale.LC_ALL, 'C')
+        setlocale(locale.LC_ALL, 'C')
 
 def setup_stdout():
     """ Check that stdout is of suitable encoding and handle the situation if
