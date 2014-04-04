@@ -111,13 +111,13 @@ class LoggingTransactionDisplay(TransactionDisplay):
                        self.PKG_OBSOLETE  : _('Obsoleting'),
                        self.PKG_REINSTALL : _('Reinstalling'),
                        self.PKG_UPGRADE   : _('Upgrading')}
-        self.fileaction = {self.PKG_CLEANUP   : 'Cleanup',
-                           self.PKG_DOWNGRADE : 'Downgraded',
-                           self.PKG_ERASE     : 'Erased',
-                           self.PKG_INSTALL   : 'Installed',
-                           self.PKG_OBSOLETE  : 'Obsoleted',
-                           self.PKG_REINSTALL : 'Reinstalled',
-                           self.PKG_UPGRADE   :  'Upgraded'}
+        self.fileaction = {self.PKG_CLEANUP   : _('Cleanup'),
+                           self.PKG_DOWNGRADE : _('Downgraded'),
+                           self.PKG_ERASE     : _('Erased'),
+                           self.PKG_INSTALL   : _('Installed'),
+                           self.PKG_OBSOLETE  : _('Obsoleted'),
+                           self.PKG_REINSTALL : _('Reinstalled'),
+                           self.PKG_UPGRADE   : _('Upgraded')}
         self.logger = logging.getLogger("dnf.rpm")
 
     def errorlog(self, msg):
