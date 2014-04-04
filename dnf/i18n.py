@@ -18,6 +18,7 @@
 #
 
 from __future__ import print_function
+from __future__ import unicode_literals
 import locale
 import os
 import sys
@@ -125,3 +126,33 @@ def ucd(obj):
             except UnicodeError:
                 pass
         return unicode(str(obj), _guess_encoding())
+
+
+try:
+    '''
+    Setup the yum translation domain and make _() and P_() translation wrappers
+    available.
+    using ugettext to make sure translated strings are in Unicode.
+    '''
+    import gettext
+    t = gettext.translation('dnf', fallback=True)
+    _ = t.ugettext
+    P_ = t.ungettext
+except:
+    '''
+    Something went wrong so we make a dummy _() wrapper there is just
+    returning the same text
+    '''
+
+    def dummyP_wrapper(str1, str2, n):
+        '''
+        Dummy Plural Translation wrapper, just returning the singular or plural
+        string.
+        '''
+        if n == 1:
+            return str1
+        else:
+            return str2
+
+    _ = lambda x: x
+    P_ = dummyP_wrapper
