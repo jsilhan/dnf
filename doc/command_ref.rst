@@ -99,6 +99,9 @@ Options
 ``--installroot=<path>``
     set install root
 
+``--metadata-refresh``
+    clears all metadata cache before running a command
+
 ``--nogpgcheck``
     skip checking GPG signatures on packages
 
