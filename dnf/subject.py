@@ -129,6 +129,8 @@ class Subject(object):
 
     def get_best_selector(self, sack, forms=None):
         # :api
+        if self.filename_pattern:
+            return dnf.selector.Selector(sack).set(provides=self.subj.pattern)
         kwargs = {'allow_globs' : True}
         if forms:
             kwargs['form'] = forms
