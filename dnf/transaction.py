@@ -182,9 +182,7 @@ class Transaction(object):
                 else:
                     ts.addInstall(hdr, tsi, 'i')
             elif tsi.op_type == REINSTALL:
-                ts.addErase(tsi.erased.idx)
-                hdr = tsi.installed.header
-                ts.addInstall(hdr, tsi, 'i')
+                ts.addReinstall(tsi.installed.header, tsi)
             elif tsi.op_type == UPGRADE:
                 hdr = tsi.installed.header
                 ts.addInstall(hdr, tsi, 'u')
