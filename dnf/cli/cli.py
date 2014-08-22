@@ -59,6 +59,7 @@ import dnf.util
 import dnf.yum.config
 import dnf.yum.misc
 import hawkey
+import imp
 import logging
 import operator
 import os
@@ -826,9 +827,15 @@ class Cli(object):
 
         basecmd = self.base.cmds[0] # our base command
         command_cls = self.cli_commands.get(basecmd)
+        plugin_hint = _("It could be a DNF plugin command. Install "
+                        "'dnf-plugins-core' to get common DNF plugins.")
         if command_cls is None:
             logger.critical(_('No such command: %s. Please use %s --help'),
                                   basecmd, sys.argv[0])
+            try:
+                imp.find_module('dnfpluginscore')
+            except ImportError:
+                logger.info(plugin_hint)
             raise CliError
         self.command = command_cls(self)
 
