@@ -89,6 +89,15 @@ class Subject(object):
 
     def get_best_query(self, sack, with_provides=True, forms=None):
         # :api
+
+        def prefer_obsoletes(reldep):
+            q = sack.query().filter(provides=reldep)
+            qo = q.filter(obsoletes=reldep)
+            if qo:
+                return qo
+            if q:
+                return q
+
         pat = self.subj.pattern
 
         kwargs = {'allow_globs': True,
@@ -97,17 +106,21 @@ class Subject(object):
             kwargs['form'] = forms
         nevra = first(self.subj.nevra_possibilities_real(sack, **kwargs))
         if nevra:
-            q = self._nevra_to_filters(sack.query(), nevra)
-            if q:
-                return q
+            if nevra._has_just_name():
+                q = prefer_obsoletes(nevra.name)
+                if q:
+                    return q
+            else:
+                q = self._nevra_to_filters(sack.query(), nevra)
+                if q:
+                    return q
 
         if with_provides:
             reldeps = self.subj.reldep_possibilities_real(sack, icase=self.icase)
             reldep = first(reldeps)
-            if reldep:
-                q = sack.query().filter(provides=reldep)
-                if q:
-                    return q
+            q = prefer_obsoletes(reldep)
+            if q:
+                return q
 
         if self.filename_pattern:
             return sack.query().filter(file__glob=pat)
@@ -122,10 +135,16 @@ class Subject(object):
             kwargs['form'] = forms
         nevra = first(self.subj.nevra_possibilities_real(sack, **kwargs))
         if nevra:
-            sltr = dnf.selector.Selector(sack)
-            s = self._nevra_to_selector(sltr, nevra)
-            if len(s.matches()) > 0:
-                return s
+            if nevra._has_just_name():
+                sltr = dnf.selector.Selector(sack)
+                s = sltr.set(provides=nevra.name)
+                if len(s.matches()) > 0:
+                    return s
+            else:
+                sltr = dnf.selector.Selector(sack)
+                s = self._nevra_to_selector(sltr, nevra)
+                if len(s.matches()) > 0:
+                    return s
 
         reldep = first(self.subj.reldep_possibilities_real(sack))
         if reldep:
