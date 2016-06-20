@@ -93,10 +93,13 @@ class Subject(object):
         # :api
 
         def prefer_obsoletes(reldep):
-            q = sack.query().filter(provides=reldep)
+            q = sack.query().filter(provides=[reldep])
             qo = q.filter(obsoletes=reldep)
             if qo:
                 return qo
+            qn = q.filter(name=reldep)
+            if qn:
+                return qn
             if q:
                 return q
 
