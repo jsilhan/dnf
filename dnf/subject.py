@@ -94,10 +94,10 @@ class Subject(object):
 
         def prefer_obsoletes(reldep):
             q = sack.query().filter(provides=[reldep])
-            qo = q.filter(obsoletes=reldep)
+            qn = q.filter(name=str(reldep))
+            qo = q.filter(obsoletes=list(qn))
             if qo:
                 return qo
-            qn = q.filter(name=reldep)
             if qn:
                 return qn
             if q:
@@ -112,9 +112,11 @@ class Subject(object):
         nevra = first(self.subj.nevra_possibilities_real(sack, **kwargs))
         if nevra:
             if nevra._has_just_name():
-                q = prefer_obsoletes(nevra.name)
-                if q:
-                    return q
+                reldep = hawkey.Reldep(sack, nevra.name)
+                if reldep:
+                    q = prefer_obsoletes(reldep)
+                    if q:
+                        return q
             else:
                 q = self._nevra_to_filters(sack.query(), nevra)
                 if q:
@@ -124,9 +126,10 @@ class Subject(object):
             reldeps = self.subj.reldep_possibilities_real(
                 sack, icase=self.icase)
             reldep = first(reldeps)
-            q = prefer_obsoletes(reldep)
-            if q:
-                return q
+            if reldep:
+                q = prefer_obsoletes(reldep)
+                if q:
+                    return q
 
         if self.filename_pattern:
             return sack.query().filter(file__glob=pat)
