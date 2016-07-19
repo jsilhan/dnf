@@ -161,6 +161,19 @@ class Base(object):
                 pkgs = self.sack.query().filter(reponame=r.id).\
                     filter(name__glob=incl)
                 self.sack.add_includes(pkgs)
+        if not self.conf.upgrade_group_objects_upgrade:
+            # exclude packages installed from groups
+            # these packages will be marked to installation
+            # which could prevent them from upgrade, downgrade
+            for members_dct in (self.db['ENVIRONMENTS'], self.db['GROUPS']):
+                for (id_, memb) in members_dct.items():
+                    pm = _PersistMember(memb)
+                    if pm.installed:
+                        installed_pkg_names = set(pm.full_list) - set(pm.pkg_exclude)
+                        installed_pkgs = self.sack.query().filter(name=installed_pkg_names).installed()
+                        for pkg in installed_pkgs:
+                            self.goal.install(pkg)
+
 
     def _store_persistent_data(self):
         if self._repo_persistor:
